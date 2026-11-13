@@ -10,18 +10,27 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "consumos_insumo")
+@Table(name = "consumos_insumo", uniqueConstraints = @UniqueConstraint(
+        name = "uk_consumos_insumo_operacion", columnNames = {"informe_id", "clave_operacion"}))
 @Getter
 @Setter
 @NoArgsConstructor
 public class ConsumoInsumo {
+
+    @Column(name = "clave_operacion", length = 36)
+    private String claveOperacion;
+
+    @Column(name = "revertido_en")
+    private LocalDateTime revertidoEn;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,7 +41,7 @@ public class ConsumoInsumo {
     @JsonIgnore
     private InformeVehiculo informe;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "insumo_id", nullable = false)
     private Insumo insumo;
 

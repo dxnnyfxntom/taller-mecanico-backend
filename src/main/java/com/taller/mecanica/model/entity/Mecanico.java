@@ -32,6 +32,7 @@ public class Mecanico {
     @NotBlank(message = "El DNI es obligatorio")
     @Size(max = 20, message = "El DNI no debe superar 20 caracteres")
     @Column(nullable = false, length = 20)
+    @jakarta.validation.constraints.Pattern(regexp = "[0-9]{8}", message = "Ingrese un DNI de 8 digitos")
     private String dni;
 
     @Size(max = 100, message = "La especialidad no debe superar 100 caracteres")
@@ -40,6 +41,7 @@ public class Mecanico {
 
     @Size(max = 20, message = "El telefono no debe superar 20 caracteres")
     @Column(length = 20)
+    @jakarta.validation.constraints.Pattern(regexp = "(?:9[0-9]{8})?", message = "Ingrese un celular peruano de 9 digitos")
     private String telefono;
 
     @Column(nullable = false)

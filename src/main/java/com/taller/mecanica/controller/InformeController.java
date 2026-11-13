@@ -12,6 +12,9 @@ import com.taller.mecanica.service.InformeService;
 import com.taller.mecanica.service.ReporteService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import com.taller.mecanica.security.AccesoOrden;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -39,9 +42,11 @@ public class InformeController {
 
     private final InformeService informeService;
     private final ReporteService reporteService;
+    private final AccesoOrden accesoOrden;
 
     @GetMapping
     public List<InformeResumenResponse> listar(
+            Authentication auth,
             @RequestParam(required = false) EstadoInforme estado,
             @RequestParam(required = false) Long mecanicoId,
             @RequestParam(required = false) String placa,
@@ -49,10 +54,11 @@ public class InformeController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta) {
-        return informeService.listar(estado, mecanicoId, placa, desde, hasta);
+        return informeService.listar(estado, accesoOrden.filtrarMecanico(auth, mecanicoId), placa, desde, hasta);
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("@accesoOrden.orden(authentication, #id)")
     public InformeDetalleResponse obtener(@PathVariable Long id) {
         return informeService.obtenerDetalle(id);
     }
@@ -76,17 +82,20 @@ public class InformeController {
     }
 
     @PatchMapping("/{id}/escaneos")
+    @PreAuthorize("@accesoOrden.orden(authentication, #id)")
     public InformeDetalleResponse actualizarEscaneos(@PathVariable Long id,
                                                      @Valid @RequestBody EscaneoRequest request) {
         return informeService.actualizarEscaneos(id, request);
     }
 
     @GetMapping("/{id}/checklist")
+    @PreAuthorize("@accesoOrden.orden(authentication, #id)")
     public List<InformeDetalleResponse.Item> checklist(@PathVariable Long id) {
         return informeService.listarChecklist(id);
     }
 
     @PatchMapping("/{id}/checklist/{detalleId}")
+    @PreAuthorize("@accesoOrden.orden(authentication, #id)")
     public InformeDetalleResponse.Item actualizarChecklist(@PathVariable Long id,
                                                            @PathVariable Long detalleId,
                                                            @Valid @RequestBody ChecklistUpdateRequest request) {
@@ -99,11 +108,12 @@ public class InformeController {
         return Map.of(
                 "informe", detalle,
                 "generadoEn", LocalDateTime.now().toString(),
-                "historialVehiculo", reporteService.historial(detalle.vehiculo().placa())
+                "historialVehiculo", reporteService.historialPorVehiculo(detalle.vehiculo().id())
         );
     }
 
     @PostMapping(value = "/{id}/ficha-tecnica", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("@accesoOrden.orden(authentication, #id)")
     public InformeDetalleResponse subirFichaTecnica(@PathVariable Long id,
                                                     @RequestPart("archivo") MultipartFile archivo) {
         return informeService.subirFichaTecnica(id, archivo);

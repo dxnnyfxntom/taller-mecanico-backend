@@ -3,7 +3,11 @@ package com.taller.mecanica.dto.request;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.UUID;
+
 public record ConsumoInsumoRequest(
+        @NotNull(message = "La clave de operacion es obligatoria") UUID claveOperacion,
+
         @NotNull(message = "El insumo es obligatorio")
         Long insumoId,
 

@@ -6,7 +6,9 @@ import com.taller.mecanica.model.entity.Insumo;
 import com.taller.mecanica.model.enums.CategoriaInsumo;
 import com.taller.mecanica.repository.ConsumoInsumoRepository;
 import com.taller.mecanica.repository.InsumoRepository;
-import com.taller.mecanica.service.FileStorageService;
+import com.taller.mecanica.dto.request.AjusteStockRequest;
+import com.taller.mecanica.model.entity.AjusteStock;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ public class InsumoService {
     private final InsumoRepository insumoRepository;
     private final ConsumoInsumoRepository consumoRepository;
     private final FileStorageService fileStorageService;
+    private final EntityManager entityManager;
 
     public List<Insumo> listar(CategoriaInsumo categoria, String q) {
         if (q != null && !q.isBlank()) {
@@ -58,7 +61,7 @@ public class InsumoService {
 
     @Transactional
     public Insumo actualizar(Long id, Insumo datos) {
-        Insumo insumo = obtener(id);
+        Insumo insumo = bloquear(id);
         normalizar(datos);
         if (insumoRepository.existsByCodigoIgnoreCaseAndIdNot(datos.getCodigo(), id)) {
             throw new BusinessException("Ya existe otro insumo con el codigo " + datos.getCodigo());
@@ -66,36 +69,44 @@ public class InsumoService {
         insumo.setCodigo(datos.getCodigo());
         insumo.setNombre(datos.getNombre());
         insumo.setCategoria(datos.getCategoria());
-        insumo.setStockActual(datos.getStockActual());
         insumo.setStockMinimo(datos.getStockMinimo());
         insumo.setPrecioVenta(datos.getPrecioVenta());
-        if (datos.getUrlFichaTecnicaPdf() != null) {
-            insumo.setUrlFichaTecnicaPdf(datos.getUrlFichaTecnicaPdf());
+        return insumo;
+    }
+
+    @Transactional
+    public Insumo ajustarStock(Long id, AjusteStockRequest request) {
+        Insumo insumo = bloquear(id);
+        if (!insumo.getStockActual().equals(request.stockEsperado())) {
+            throw new BusinessException("El stock cambio. Actualice el inventario antes de ajustar");
         }
-        return insumoRepository.save(insumo);
+        if (insumo.getStockActual().equals(request.stockNuevo())) {
+            return insumo;
+        }
+        entityManager.persist(new AjusteStock(id, insumo.getStockActual(), request.stockNuevo(), request.motivo().trim()));
+        insumo.setStockActual(request.stockNuevo());
+        return insumo;
     }
 
     @Transactional
     public Insumo subirFichaTecnica(Long id, MultipartFile archivo) {
-        Insumo insumo = obtener(id);
-        String anterior = insumo.getUrlFichaTecnicaPdf();
-        String url = fileStorageService.guardarFichaTecnica("insumos", id, archivo);
-        insumo.setUrlFichaTecnicaPdf(url);
-        Insumo guardado = insumoRepository.save(insumo);
-        if (anterior != null && !anterior.equals(url)) {
-            fileStorageService.eliminar(anterior);
-        }
-        return guardado;
+        Insumo insumo = bloquear(id);
+        insumo.setUrlFichaTecnicaPdf(fileStorageService.guardarFichaTecnica("insumos", id, archivo));
+        return insumo;
     }
 
     @Transactional
     public void eliminar(Long id) {
-        Insumo insumo = obtener(id);
+        Insumo insumo = bloquear(id);
         if (consumoRepository.existsByInsumoId(id)) {
             throw new BusinessException("El insumo tiene consumos registrados en ordenes y no puede eliminarse");
         }
-        fileStorageService.eliminar(insumo.getUrlFichaTecnicaPdf());
         insumoRepository.delete(insumo);
+    }
+
+    private Insumo bloquear(Long id) {
+        return insumoRepository.buscarParaActualizar(id)
+                .orElseThrow(() -> ResourceNotFoundException.de("Insumo", id));
     }
 
     private void normalizar(Insumo insumo) {

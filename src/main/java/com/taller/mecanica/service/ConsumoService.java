@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDateTime;
+import org.springframework.transaction.annotation.Isolation;
 
 @Service
 @RequiredArgsConstructor
@@ -29,14 +31,26 @@ public class ConsumoService {
 
     public List<InformeDetalleResponse.Consumo> listar(Long informeId) {
         cargarInforme(informeId);
-        return consumoRepository.findByInformeIdOrderByIdAsc(informeId).stream()
+        return consumoRepository.findByInformeIdAndRevertidoEnIsNullOrderByIdAsc(informeId).stream()
                 .map(InformeMapper::toConsumo)
                 .toList();
     }
 
     @Transactional
     public InformeDetalleResponse.Consumo agregar(Long informeId, ConsumoInsumoRequest request) {
-        InformeVehiculo informe = cargarInforme(informeId);
+        InformeVehiculo informe = informeRepository.bloquear(informeId);
+        String clave = request.claveOperacion().toString();
+        ConsumoInsumo previo = consumoRepository.findByInformeIdAndClaveOperacion(informeId, clave).orElse(null);
+        if (previo != null) {
+            if (previo.getRevertidoEn() != null) {
+                throw new BusinessException("El consumo de esta operacion ya fue revertido");
+            }
+            if (!previo.getInsumo().getId().equals(request.insumoId())
+                    || !previo.getCantidad().equals(request.cantidad())) {
+                throw new BusinessException("La clave ya pertenece a un consumo con otros datos");
+            }
+            return InformeMapper.toConsumo(previo);
+        }
         InformeService.validarEditable(informe);
 
         Insumo insumo = insumoRepository.buscarParaActualizar(request.insumoId())
@@ -50,6 +64,7 @@ public class ConsumoService {
 
         ConsumoInsumo consumo = new ConsumoInsumo();
         consumo.setInforme(informe);
+        consumo.setClaveOperacion(clave);
         consumo.setInsumo(insumo);
         consumo.setCantidad(request.cantidad());
         consumo.setPrecioUnitario(insumo.getPrecioVenta());
@@ -64,18 +79,27 @@ public class ConsumoService {
         return InformeMapper.toConsumo(guardado);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void eliminar(Long consumoId) {
+        Long informeId = consumoRepository.buscarInformeId(consumoId)
+                .orElseThrow(() -> ResourceNotFoundException.de("Consumo de insumo", consumoId));
+        InformeVehiculo informe = informeRepository.bloquear(informeId);
         ConsumoInsumo consumo = consumoRepository.findById(consumoId)
                 .orElseThrow(() -> ResourceNotFoundException.de("Consumo de insumo", consumoId));
-        InformeVehiculo informe = consumo.getInforme();
+        if (consumo.getRevertidoEn() != null) {
+            return;
+        }
         InformeService.validarEditable(informe);
 
         Insumo insumo = insumoRepository.buscarParaActualizar(consumo.getInsumo().getId())
                 .orElseThrow(() -> ResourceNotFoundException.de("Insumo", consumo.getInsumo().getId()));
-        insumo.setStockActual(insumo.getStockActual() + consumo.getCantidad());
+        long nuevoStock = (long) insumo.getStockActual() + consumo.getCantidad();
+        if (nuevoStock > Integer.MAX_VALUE) {
+            throw new BusinessException("La reposicion supera el limite de stock");
+        }
+        insumo.setStockActual((int) nuevoStock);
         insumoRepository.save(insumo);
-        consumoRepository.delete(consumo);
+        consumo.setRevertidoEn(LocalDateTime.now());
     }
 
     private InformeVehiculo cargarInforme(Long informeId) {

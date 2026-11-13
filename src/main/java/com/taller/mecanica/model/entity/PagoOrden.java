@@ -14,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -22,11 +23,18 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "pagos_orden")
+@Table(name = "pagos_orden", uniqueConstraints = @UniqueConstraint(
+        name = "uk_pagos_orden_operacion", columnNames = {"informe_id", "clave_operacion"}))
 @Getter
 @Setter
 @NoArgsConstructor
 public class PagoOrden {
+
+    @Column(name = "clave_operacion", length = 36)
+    private String claveOperacion;
+
+    @Column(name = "anulado_en")
+    private LocalDateTime anuladoEn;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

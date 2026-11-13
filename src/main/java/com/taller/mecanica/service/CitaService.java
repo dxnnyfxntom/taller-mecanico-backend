@@ -19,6 +19,7 @@ import com.taller.mecanica.repository.VehiculoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,9 +32,9 @@ import java.util.Set;
 public class CitaService {
 
     private static final Map<EstadoCita, Set<EstadoCita>> TRANSICIONES = Map.of(
-            EstadoCita.PENDIENTE, Set.of(EstadoCita.CONFIRMADA, EstadoCita.EN_TALLER, EstadoCita.CANCELADA),
-            EstadoCita.CONFIRMADA, Set.of(EstadoCita.PENDIENTE, EstadoCita.EN_TALLER, EstadoCita.CANCELADA),
-            EstadoCita.EN_TALLER, Set.of(EstadoCita.CANCELADA),
+            EstadoCita.PENDIENTE, Set.of(EstadoCita.CONFIRMADA, EstadoCita.CANCELADA),
+            EstadoCita.CONFIRMADA, Set.of(EstadoCita.PENDIENTE, EstadoCita.CANCELADA),
+            EstadoCita.EN_TALLER, Set.of(),
             EstadoCita.CANCELADA, Set.of(EstadoCita.PENDIENTE)
     );
 
@@ -61,8 +62,9 @@ public class CitaService {
         return CitaResponse.from(cargar(id));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CitaResponse crear(CitaRequest request) {
+        configuracionService.bloquear();
         Cliente cliente = clienteRepository.findById(request.clienteId())
                 .orElseThrow(() -> ResourceNotFoundException.de("Cliente", request.clienteId()));
         Vehiculo vehiculo = vehiculoRepository.findById(request.vehiculoId())
@@ -77,6 +79,7 @@ public class CitaService {
         }
         LocalDateTime inicio = request.fechaHoraInicio();
         LocalDateTime fin = inicio.plusHours(paquete.getTiempoEstimadoHoras());
+        validarFechaNueva(inicio);
         validarCapacidad(inicio, fin, null);
 
         Cita cita = new Cita();
@@ -91,8 +94,9 @@ public class CitaService {
         return CitaResponse.from(citaRepository.save(cita));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CitaResponse actualizar(Long id, CitaRequest request) {
+        configuracionService.bloquear();
         Cita cita = cargar(id);
         if (cita.getEstadoCita() == EstadoCita.EN_TALLER || cita.getEstadoCita() == EstadoCita.CANCELADA) {
             throw new BusinessException("Solo se pueden reprogramar citas pendientes o confirmadas");
@@ -111,6 +115,9 @@ public class CitaService {
                 .orElseThrow(() -> ResourceNotFoundException.de("Paquete de servicio", request.paqueteId()));
         LocalDateTime inicio = request.fechaHoraInicio();
         LocalDateTime fin = inicio.plusHours(paquete.getTiempoEstimadoHoras());
+        if (!inicio.equals(cita.getFechaHoraInicio())) {
+            validarFechaNueva(inicio);
+        }
         validarCapacidad(inicio, fin, id);
 
         cita.setCliente(cliente);
@@ -122,8 +129,9 @@ public class CitaService {
         return CitaResponse.from(citaRepository.save(cita));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public CitaResponse cambiarEstado(Long id, EstadoCita nuevoEstado) {
+        configuracionService.bloquear();
         Cita cita = cargar(id);
         if (cita.getEstadoCita() == nuevoEstado) {
             return CitaResponse.from(cita);
@@ -132,12 +140,20 @@ public class CitaService {
         if (!permitidos.contains(nuevoEstado)) {
             throw new BusinessException("Transicion no permitida: " + cita.getEstadoCita() + " -> " + nuevoEstado);
         }
+        if (cita.getInformeId() != null) {
+            throw new BusinessException("Cambie el estado desde la orden asociada");
+        }
+        if (cita.getEstadoCita() == EstadoCita.CANCELADA) {
+            validarFechaNueva(cita.getFechaHoraInicio());
+            validarCapacidad(cita.getFechaHoraInicio(), cita.getFechaHoraFinCalculada(), id);
+        }
         cita.setEstadoCita(nuevoEstado);
         return CitaResponse.from(citaRepository.save(cita));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public InformeDetalleResponse convertir(Long id, ConvertirCitaRequest request) {
+        configuracionService.bloquear();
         Cita cita = cargar(id);
         if (cita.getInformeId() != null) {
             throw new BusinessException("La cita ya fue convertida en una orden de trabajo");
@@ -161,8 +177,9 @@ public class CitaService {
         return informeService.crear(create);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void eliminar(Long id) {
+        configuracionService.bloquear();
         Cita cita = cargar(id);
         if (cita.getInformeId() != null) {
             throw new BusinessException("No se puede eliminar una cita que ya tiene orden de trabajo");
@@ -175,6 +192,12 @@ public class CitaService {
                 .orElseThrow(() -> ResourceNotFoundException.de("Cita", id));
     }
 
+    private void validarFechaNueva(LocalDateTime inicio) {
+        if (inicio.isBefore(LocalDateTime.now(java.time.ZoneId.of("America/Lima")).truncatedTo(java.time.temporal.ChronoUnit.MINUTES))) {
+            throw new BusinessException("Seleccione una fecha y hora de cita que no hayan pasado");
+        }
+    }
+
     private void validarCapacidad(LocalDateTime inicio, LocalDateTime fin, Long excluirId) {
         int capacidad = configuracionService.obtener().getCapacidadMaximaSimultanea() == null
                 ? 3
@@ -182,9 +205,20 @@ public class CitaService {
         List<Cita> solapadas = excluirId == null
                 ? citaRepository.buscarSolapadas(inicio, fin)
                 : citaRepository.buscarSolapadasExcluyendo(inicio, fin, excluirId);
-        if (solapadas.size() >= capacidad) {
+        // Acumular entradas y salidas en el intervalo evita contar citas que no coinciden entre si.
+        java.util.TreeMap<LocalDateTime, Integer> cambios = new java.util.TreeMap<>();
+        for (Cita cita : solapadas) {
+            LocalDateTime entrada = cita.getFechaHoraInicio().isBefore(inicio) ? inicio : cita.getFechaHoraInicio();
+            cambios.merge(entrada, 1, Integer::sum);
+            cambios.merge(cita.getFechaHoraFinCalculada(), -1, Integer::sum);
+        }
+        int ocupadas = 0;
+        for (int cambio : cambios.values()) {
+            ocupadas += cambio;
+            if (ocupadas >= capacidad) {
             throw new BusinessException("Capacidad maxima del taller alcanzada (" + capacidad
                     + " vehiculos simultaneos) para el horario solicitado");
+            }
         }
     }
 }

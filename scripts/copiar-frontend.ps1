@@ -21,7 +21,12 @@ Write-Host "  Desde: $Dist"
 Write-Host "  Hacia: $static"
 
 if (Test-Path $static) {
-    Remove-Item $static -Recurse -Force
+    $esperado = [System.IO.Path]::GetFullPath((Join-Path $raiz "src\main\resources\static"))
+    $destinoReal = (Resolve-Path -LiteralPath $static).Path
+    if ($destinoReal -ne $esperado -or (Get-Item -LiteralPath $static).LinkType) {
+        throw "El destino de los archivos estaticos no es una carpeta local del backend."
+    }
+    Remove-Item -LiteralPath $destinoReal -Recurse -Force
 }
 New-Item -ItemType Directory -Path $static -Force | Out-Null
 Copy-Item (Join-Path $Dist "*") $static -Recurse -Force

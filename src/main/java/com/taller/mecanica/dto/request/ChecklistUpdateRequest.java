@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record ChecklistUpdateRequest(
-        @NotNull(message = "El estado del componente es obligatorio")
         EstadoComponente estadoComponente,
 
         @NotNull(message = "La accion realizada es obligatoria")

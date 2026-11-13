@@ -87,7 +87,7 @@ public class ReporteService {
                 .filter(i -> i.getEstado() != EstadoInforme.CANCELADO)
                 .map(i -> InformeCalculo.saldoPendiente(
                         InformeCalculo.totalOrden(i.getPrecioPaquete(), i.getAdicionales()),
-                        InformeCalculo.totalPagado(i.getPagos())))
+                        InformeCalculo.totalPagado(i.getPagos())).max(BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<RecordatorioResponse> recordatorios = recordatorios(null);
@@ -196,8 +196,16 @@ public class ReporteService {
     public HistorialPlacaResponse historial(String placa) {
         Vehiculo vehiculo = vehiculoRepository.findByPlacaIgnoreCase(placa.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Vehiculo no encontrado con placa " + placa));
-        List<InformeVehiculo> informes = informeRepository
-                .findByVehiculoPlacaIgnoreCaseOrderByFechaIngresoDesc(vehiculo.getPlaca());
+        return historialDelVehiculo(vehiculo);
+    }
+
+    public HistorialPlacaResponse historialPorVehiculo(Long id) {
+        return historialDelVehiculo(vehiculoRepository.findById(id)
+                .orElseThrow(() -> ResourceNotFoundException.de("Vehiculo", id)));
+    }
+
+    private HistorialPlacaResponse historialDelVehiculo(Vehiculo vehiculo) {
+        List<InformeVehiculo> informes = informeRepository.findByVehiculoIdOrderByFechaIngresoDesc(vehiculo.getId());
 
         List<HistorialPlacaResponse.Visita> visitas = informes.stream()
                 .map(informe -> {
@@ -210,12 +218,14 @@ public class ReporteService {
                             .toList();
                     BigDecimal total = InformeCalculo.totalOrden(informe.getPrecioPaquete(), informe.getAdicionales());
                     BigDecimal pagado = InformeCalculo.totalPagado(informe.getPagos());
+                    var datos = informe.datosHistoricos();
                     return new HistorialPlacaResponse.Visita(
                             informe.getId(),
                             informe.getNumeroOrden(),
                             informe.getFechaIngreso(),
-                            informe.getPaquete().getNombre(),
-                            informe.getMecanico().getNombreCompleto(),
+                            datos.cliente().nombreCompleto(),
+                            datos.paquete().nombre(),
+                            datos.mecanico().nombreCompleto(),
                             informe.getKilometrajeIngreso(),
                             aceite.isBlank() ? null : aceite,
                             informe.getFichaTecnicaPdfUrl(),
@@ -240,7 +250,7 @@ public class ReporteService {
         LocalDateTime fin = hasta != null ? hasta : LocalDateTime.now();
         LocalDateTime inicio = desde != null ? desde : fin.minusDays(30);
         if (inicio.isAfter(fin)) {
-            throw new IllegalArgumentException("La fecha inicial no puede ser posterior a la final");
+            throw new com.taller.mecanica.exception.BusinessException("La fecha inicial no puede ser posterior a la final");
         }
         List<InformeVehiculo> informes = informeRepository.findByFechaIngresoBetween(inicio, fin);
         Map<Long, List<InformeVehiculo>> porMecanico = informes.stream()

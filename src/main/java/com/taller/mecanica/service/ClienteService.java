@@ -3,7 +3,9 @@ package com.taller.mecanica.service;
 import com.taller.mecanica.exception.BusinessException;
 import com.taller.mecanica.exception.ResourceNotFoundException;
 import com.taller.mecanica.model.entity.Cliente;
+import com.taller.mecanica.model.entity.InformeVehiculo;
 import com.taller.mecanica.repository.ClienteRepository;
+import com.taller.mecanica.repository.InformeVehiculoRepository;
 import com.taller.mecanica.repository.VehiculoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -19,6 +21,7 @@ import java.util.List;
 public class ClienteService {
 
     private final ClienteRepository clienteRepository;
+    private final InformeVehiculoRepository informeRepository;
     private final VehiculoRepository vehiculoRepository;
 
     public List<Cliente> listar(String q) {
@@ -51,6 +54,8 @@ public class ClienteService {
         if (clienteRepository.existsByDniRucAndIdNot(datos.getDniRuc(), id)) {
             throw new BusinessException("Ya existe otro cliente con el DNI/RUC " + datos.getDniRuc());
         }
+        informeRepository.findByVehiculoClienteIdAndDatosServicioIsNull(id)
+                .forEach(InformeVehiculo::conservarDatosServicio);
         cliente.setDniRuc(datos.getDniRuc());
         cliente.setNombreCompleto(datos.getNombreCompleto());
         cliente.setTelefonoWhatsapp(datos.getTelefonoWhatsapp());

@@ -7,13 +7,9 @@ import com.taller.mecanica.model.entity.DetalleInspeccionInforme;
 import com.taller.mecanica.model.entity.EvidenciaFotografica;
 import com.taller.mecanica.model.entity.InformeVehiculo;
 import com.taller.mecanica.model.entity.PagoOrden;
-import com.taller.mecanica.dto.response.ClienteInfo;
 import com.taller.mecanica.dto.response.InformeDetalleResponse;
 import com.taller.mecanica.dto.response.InformeResumenResponse;
-import com.taller.mecanica.dto.response.MecanicoInfo;
-import com.taller.mecanica.dto.response.PaqueteInfo;
 import com.taller.mecanica.dto.response.TallerInfo;
-import com.taller.mecanica.dto.response.VehiculoInfo;
 import com.taller.mecanica.service.InformeCalculo;
 
 import java.math.BigDecimal;
@@ -29,17 +25,18 @@ public final class InformeMapper {
     public static InformeResumenResponse toResumen(InformeVehiculo informe) {
         BigDecimal total = InformeCalculo.totalOrden(informe.getPrecioPaquete(), informe.getAdicionales());
         BigDecimal pagado = InformeCalculo.totalPagado(informe.getPagos());
-        String marcaModelo = (informe.getVehiculo().getMarca() + " " + informe.getVehiculo().getModelo()).trim();
+        var datos = informe.datosHistoricos();
+        String marcaModelo = (datos.vehiculo().marca() + " " + datos.vehiculo().modelo()).trim();
         return new InformeResumenResponse(
                 informe.getId(),
                 informe.getNumeroOrden(),
-                informe.getVehiculo().getCliente().getNombreCompleto(),
-                informe.getVehiculo().getCliente().getTelefonoWhatsapp(),
-                informe.getVehiculo().getId(),
-                informe.getVehiculo().getPlaca(),
+                datos.cliente().nombreCompleto(),
+                datos.cliente().telefonoWhatsapp(),
+                datos.vehiculo().id(),
+                datos.vehiculo().placa(),
                 marcaModelo,
-                informe.getPaquete().getNombre(),
-                informe.getMecanico().getNombreCompleto(),
+                datos.paquete().nombre(),
+                datos.mecanico().nombreCompleto(),
                 informe.getFechaIngreso(),
                 informe.getFechaEstimadaEntrega(),
                 informe.getFechaEntregaReal(),
@@ -78,6 +75,7 @@ public final class InformeMapper {
         BigDecimal total = InformeCalculo.totalOrden(informe.getPrecioPaquete(), informe.getAdicionales());
         BigDecimal pagado = InformeCalculo.totalPagado(informe.getPagos());
 
+        var datos = informe.datosHistoricos();
         return new InformeDetalleResponse(
                 informe.getId(),
                 informe.getNumeroOrden(),
@@ -102,10 +100,10 @@ public final class InformeMapper {
                 informe.getHorasEstimadas(),
                 informe.getGarantiaKm(),
                 informe.getGarantiaMeses(),
-                ClienteInfo.from(informe.getVehiculo().getCliente()),
-                VehiculoInfo.from(informe.getVehiculo()),
-                MecanicoInfo.from(informe.getMecanico()),
-                PaqueteInfo.from(informe.getPaquete()),
+                datos.cliente(),
+                datos.vehiculo(),
+                datos.mecanico(),
+                datos.paquete(),
                 checklist,
                 consumos,
                 adicionales,

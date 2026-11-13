@@ -46,7 +46,7 @@ import java.util.Set;
 public class InformeService {
 
     private static final Map<EstadoInforme, Set<EstadoInforme>> TRANSICIONES = Map.of(
-            EstadoInforme.RECEPCIONADO, Set.of(EstadoInforme.EN_PROCESO, EstadoInforme.LISTO_PARA_ENTREGA, EstadoInforme.CANCELADO),
+            EstadoInforme.RECEPCIONADO, Set.of(EstadoInforme.EN_PROCESO, EstadoInforme.CANCELADO),
             EstadoInforme.EN_PROCESO, Set.of(EstadoInforme.LISTO_PARA_ENTREGA, EstadoInforme.CANCELADO),
             EstadoInforme.LISTO_PARA_ENTREGA, Set.of(EstadoInforme.ENTREGADO, EstadoInforme.EN_PROCESO),
             EstadoInforme.ENTREGADO, Set.of(),
@@ -103,8 +103,9 @@ public class InformeService {
                 .toList();
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public InformeDetalleResponse crear(InformeCreateRequest request) {
+        configuracionService.bloquear();
         Vehiculo vehiculo = vehiculoRepository.findById(request.vehiculoId())
                 .orElseThrow(() -> ResourceNotFoundException.de("Vehiculo", request.vehiculoId()));
         PaqueteServicio paquete = paqueteRepository.findById(request.paqueteId())
@@ -134,6 +135,9 @@ public class InformeService {
             if (!cita.getVehiculo().getId().equals(vehiculo.getId())) {
                 throw new BusinessException("El vehiculo de la cita no coincide con el vehiculo indicado");
             }
+            if (!cita.getCliente().getId().equals(vehiculo.getCliente().getId())) {
+                throw new BusinessException("El propietario del vehiculo cambio. Registre una cita para el cliente actual");
+            }
             if (!cita.getPaqueteDeseado().getId().equals(paquete.getId())) {
                 throw new BusinessException("El paquete de la cita no coincide con el paquete indicado");
             }
@@ -162,8 +166,9 @@ public class InformeService {
         aplicarCalculosServicio(informe, ingreso);
         clonarPlantilla(paquete, informe);
 
-        InformeVehiculo guardado = informeRepository.save(informe);
         actualizarKilometrajeVehiculo(vehiculo, request.kilometrajeIngreso());
+        informe.conservarDatosServicio();
+        InformeVehiculo guardado = informeRepository.save(informe);
 
         if (cita != null) {
             cita.setInformeId(guardado.getId());
@@ -175,16 +180,17 @@ public class InformeService {
 
     @Transactional
     public InformeDetalleResponse actualizar(Long id, InformeUpdateRequest request) {
-        InformeVehiculo informe = cargar(id);
+        InformeVehiculo informe = informeRepository.bloquear(id);
         validarEditable(informe);
 
-        if (request.mecanicoId() != null) {
+        if (request.mecanicoId() != null && !request.mecanicoId().equals(informe.getMecanico().getId())) {
             Mecanico mecanico = mecanicoRepository.findById(request.mecanicoId())
                     .orElseThrow(() -> ResourceNotFoundException.de("Mecanico", request.mecanicoId()));
             if (!Boolean.TRUE.equals(mecanico.getActivo())) {
                 throw new BusinessException("El mecanico seleccionado esta inactivo");
             }
             informe.setMecanico(mecanico);
+            informe.conservarMecanicoAsignado();
         }
         if (request.kilometrajeIngreso() != null) {
             informe.setKilometrajeIngreso(request.kilometrajeIngreso());
@@ -212,7 +218,7 @@ public class InformeService {
 
     @Transactional
     public InformeDetalleResponse actualizarEscaneos(Long id, EscaneoRequest request) {
-        InformeVehiculo informe = cargar(id);
+        InformeVehiculo informe = informeRepository.bloquear(id);
         validarEditable(informe);
         if (request.escaneoInicialResultado() != null) {
             informe.setEscaneoInicialResultado(request.escaneoInicialResultado());
@@ -225,7 +231,7 @@ public class InformeService {
 
     @Transactional
     public InformeDetalleResponse cambiarEstado(Long id, EstadoInforme nuevoEstado) {
-        InformeVehiculo informe = cargar(id);
+        InformeVehiculo informe = informeRepository.bloquear(id);
         EstadoInforme actual = informe.getEstado();
         if (actual == nuevoEstado) {
             return InformeMapper.toDetalle(informe, configuracionService.obtener());
@@ -235,13 +241,21 @@ public class InformeService {
             throw new BusinessException("Transicion no permitida: " + actual + " -> " + nuevoEstado);
         }
         if (nuevoEstado == EstadoInforme.LISTO_PARA_ENTREGA || nuevoEstado == EstadoInforme.ENTREGADO) {
-            InformeCalculo.validarCierre(informe.getEscaneoFinalResultado(), informe.getDetalles());
+            InformeCalculo.validarCierre(informe.getEscaneoFinalResultado(), informe.getDetalles(), informe.getFichaTecnicaPdfUrl());
         }
         if (nuevoEstado == EstadoInforme.ENTREGADO) {
+            informe.conservarDatosServicio();
             informe.setFechaEntregaReal(LocalDateTime.now());
         }
         if (nuevoEstado == EstadoInforme.CANCELADO) {
+            if (!informe.getPagos().isEmpty()) {
+                throw new BusinessException("Anule o regularice los pagos registrados antes de cancelar la orden");
+            }
             reponerStock(informe);
+            if (informe.getCitaId() != null) {
+                citaRepository.findById(informe.getCitaId())
+                        .ifPresent(cita -> cita.setEstadoCita(EstadoCita.CANCELADA));
+            }
         }
         informe.setEstado(nuevoEstado);
         return InformeMapper.toDetalle(informeRepository.save(informe), configuracionService.obtener());
@@ -250,20 +264,23 @@ public class InformeService {
     @Transactional
     public InformeDetalleResponse.Item actualizarChecklist(Long informeId, Long detalleId,
                                                            ChecklistUpdateRequest request) {
-        InformeVehiculo informe = cargar(informeId);
+        InformeVehiculo informe = informeRepository.bloquear(informeId);
         validarEditable(informe);
         DetalleInspeccionInforme detalle = detalleRepository.findByIdAndInformeId(detalleId, informeId)
                 .orElseThrow(() -> ResourceNotFoundException.de("Item del checklist", detalleId));
 
-        if (Boolean.TRUE.equals(detalle.getEsCondicional())
-                && request.accionRealizada() == AccionRealizada.PENDIENTE) {
-            throw new BusinessException("El item condicional '" + detalle.getDescripcionTarea()
-                    + "' exige indicar SOLO_VERIFICADO, RELLENADO, CAMBIADO o NO_REQUERIDO");
+        if (!InformeCalculo.accionPermitida(detalle, request.accionRealizada())) {
+            throw new BusinessException("Seleccione una accion valida para " + detalle.getDescripcionTarea());
+        }
+        if (request.accionRealizada() != AccionRealizada.NO_REQUERIDO && request.estadoComponente() == null) {
+            throw new BusinessException("Indique el estado observado del componente");
         }
 
-        detalle.setEstadoComponente(request.estadoComponente());
+        detalle.setEstadoComponente(request.accionRealizada() == AccionRealizada.NO_REQUERIDO
+                ? null : request.estadoComponente());
         detalle.setAccionRealizada(request.accionRealizada());
-        detalle.setValorMedido(limpiar(request.valorMedido()));
+        detalle.setValorMedido(request.accionRealizada() == AccionRealizada.NO_REQUERIDO
+                ? null : limpiar(request.valorMedido()));
         detalle.setObservacionTecnica(limpiar(request.observacionTecnica()));
         detalle.setFechaActualizacion(LocalDateTime.now());
         return InformeMapper.toItem(detalleRepository.save(detalle));
@@ -271,15 +288,11 @@ public class InformeService {
 
     @Transactional
     public InformeDetalleResponse subirFichaTecnica(Long id, MultipartFile archivo) {
-        InformeVehiculo informe = cargar(id);
+        InformeVehiculo informe = informeRepository.bloquear(id);
         validarEditable(informe);
-        String anterior = informe.getFichaTecnicaPdfUrl();
         String url = fileStorageService.guardarFichaTecnica("informes", id, archivo);
         informe.setFichaTecnicaPdfUrl(url);
         InformeVehiculo guardado = informeRepository.save(informe);
-        if (anterior != null && !anterior.equals(url)) {
-            fileStorageService.eliminar(anterior);
-        }
         return InformeMapper.toDetalle(guardado, configuracionService.obtener());
     }
 
@@ -344,9 +357,14 @@ public class InformeService {
     }
 
     private void reponerStock(InformeVehiculo informe) {
-        for (ConsumoInsumo consumo : informe.getConsumos()) {
+        for (ConsumoInsumo consumo : informe.getConsumos().stream()
+                .sorted(java.util.Comparator.comparing(c -> c.getInsumo().getId())).toList()) {
             insumoRepository.buscarParaActualizar(consumo.getInsumo().getId()).ifPresent(insumo -> {
-                insumo.setStockActual(insumo.getStockActual() + consumo.getCantidad());
+                long nuevoStock = (long) insumo.getStockActual() + consumo.getCantidad();
+                if (nuevoStock > Integer.MAX_VALUE) {
+                    throw new BusinessException("La reposicion supera el limite de stock");
+                }
+                insumo.setStockActual((int) nuevoStock);
                 insumoRepository.save(insumo);
             });
         }

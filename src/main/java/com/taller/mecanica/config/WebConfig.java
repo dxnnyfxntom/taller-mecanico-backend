@@ -26,6 +26,6 @@ public class WebConfig implements WebMvcConfigurer {
         }
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations(location)
-                .setCachePeriod(3600);
+                .setCacheControl(org.springframework.http.CacheControl.noStore());
     }
 }

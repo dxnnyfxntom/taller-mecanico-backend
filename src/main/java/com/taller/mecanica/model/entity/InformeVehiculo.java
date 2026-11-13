@@ -18,6 +18,13 @@ import jakarta.persistence.Table;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import com.taller.mecanica.dto.response.ClienteInfo;
+import com.taller.mecanica.dto.response.MecanicoInfo;
+import com.taller.mecanica.dto.response.PaqueteInfo;
+import com.taller.mecanica.dto.response.VehiculoInfo;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.type.SqlTypes;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -28,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@DynamicUpdate
 @Table(name = "informes_vehiculo")
 @Getter
 @Setter
@@ -125,10 +133,36 @@ public class InformeVehiculo {
     @Column(name = "fecha_creacion", nullable = false)
     private LocalDateTime fechaCreacion = LocalDateTime.now();
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "datos_servicio")
+    private DatosServicio datosServicio;
+
+    public record DatosServicio(ClienteInfo cliente, VehiculoInfo vehiculo, MecanicoInfo mecanico,
+                                 PaqueteInfo paquete) {
+    }
+
+    public DatosServicio datosHistoricos() {
+        return datosServicio != null ? datosServicio : new DatosServicio(
+                ClienteInfo.from(vehiculo.getCliente()), VehiculoInfo.from(vehiculo),
+                MecanicoInfo.from(mecanico), PaqueteInfo.from(paquete));
+    }
+
+    public void conservarDatosServicio() {
+        if (datosServicio == null) {
+            datosServicio = datosHistoricos();
+        }
+    }
+
+    public void conservarMecanicoAsignado() {
+        DatosServicio datos = datosHistoricos();
+        datosServicio = new DatosServicio(datos.cliente(), datos.vehiculo(), MecanicoInfo.from(mecanico), datos.paquete());
+    }
+
     @OneToMany(mappedBy = "informe", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<DetalleInspeccionInforme> detalles = new ArrayList<>();
 
     @OneToMany(mappedBy = "informe", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @org.hibernate.annotations.SQLRestriction("revertido_en is null")
     private List<ConsumoInsumo> consumos = new ArrayList<>();
 
     @OneToMany(mappedBy = "informe", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
@@ -138,5 +172,6 @@ public class InformeVehiculo {
     private List<AdicionalOrden> adicionales = new ArrayList<>();
 
     @OneToMany(mappedBy = "informe", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @org.hibernate.annotations.SQLRestriction("anulado_en is null")
     private List<PagoOrden> pagos = new ArrayList<>();
 }

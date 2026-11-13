@@ -16,6 +16,7 @@ public record HistorialPlacaResponse(
             Long informeId,
             String numeroOrden,
             LocalDateTime fecha,
+            String clienteNombre,
             String paquete,
             String mecanico,
             Integer kilometraje,

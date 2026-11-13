@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
+import java.time.temporal.ChronoUnit;
+import org.springframework.transaction.annotation.Isolation;
 
 @Service
 @RequiredArgsConstructor
@@ -28,14 +31,29 @@ public class PagoService {
 
     public List<InformeDetalleResponse.Pago> listar(Long informeId) {
         cargarInforme(informeId);
-        return pagoRepository.findByInformeIdOrderByFechaPagoAsc(informeId).stream()
+        return pagoRepository.findByInformeIdAndAnuladoEnIsNullOrderByFechaPagoAsc(informeId).stream()
                 .map(InformeMapper::toPago)
                 .toList();
     }
 
     @Transactional
     public InformeDetalleResponse.Pago registrar(Long informeId, PagoRequest request) {
-        InformeVehiculo informe = cargarInforme(informeId);
+        InformeVehiculo informe = informeRepository.bloquear(informeId);
+        String clave = request.claveOperacion().toString();
+        PagoOrden previo = pagoRepository.findByInformeIdAndClaveOperacion(informeId, clave).orElse(null);
+        if (previo != null) {
+            if (previo.getAnuladoEn() != null) {
+                throw new BusinessException("El pago de esta operacion ya fue anulado");
+            }
+            if (previo.getMonto().compareTo(request.monto()) != 0
+                    || previo.getTipoPago() != request.tipoPago() || previo.getMedioPago() != request.medioPago()
+                    || !Objects.equals(previo.getReferencia(), request.referencia())
+                    || (request.fechaPago() != null && !previo.getFechaPago().equals(
+                            request.fechaPago().truncatedTo(ChronoUnit.MICROS)))) {
+                throw new BusinessException("La clave ya pertenece a un pago con otros datos");
+            }
+            return InformeMapper.toPago(previo);
+        }
         if (informe.getEstado() == EstadoInforme.CANCELADO) {
             throw new BusinessException("No se pueden registrar pagos de una orden cancelada");
         }
@@ -51,7 +69,9 @@ public class PagoService {
 
         PagoOrden pago = new PagoOrden();
         pago.setInforme(informe);
-        pago.setFechaPago(request.fechaPago() != null ? request.fechaPago() : LocalDateTime.now());
+        pago.setClaveOperacion(clave);
+        pago.setFechaPago((request.fechaPago() != null ? request.fechaPago() : LocalDateTime.now())
+                .truncatedTo(ChronoUnit.MICROS));
         pago.setMonto(request.monto());
         pago.setTipoPago(request.tipoPago());
         pago.setMedioPago(request.medioPago());
@@ -59,14 +79,20 @@ public class PagoService {
         return InformeMapper.toPago(pagoRepository.save(pago));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void eliminar(Long id) {
+        Long informeId = pagoRepository.buscarInformeId(id)
+                .orElseThrow(() -> ResourceNotFoundException.de("Pago", id));
+        InformeVehiculo informe = informeRepository.bloquear(informeId);
         PagoOrden pago = pagoRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.de("Pago", id));
-        if (pago.getInforme().getEstado() == EstadoInforme.ENTREGADO) {
+        if (pago.getAnuladoEn() != null) {
+            return;
+        }
+        if (informe.getEstado() == EstadoInforme.ENTREGADO) {
             throw new BusinessException("No se puede anular un pago de una orden ya entregada");
         }
-        pagoRepository.delete(pago);
+        pago.setAnuladoEn(LocalDateTime.now());
     }
 
     private InformeVehiculo cargarInforme(Long informeId) {

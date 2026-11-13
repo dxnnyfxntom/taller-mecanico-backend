@@ -6,6 +6,7 @@ import com.taller.mecanica.model.entity.DetalleInspeccionInforme;
 import com.taller.mecanica.model.entity.PagoOrden;
 import com.taller.mecanica.model.enums.AccionRealizada;
 import com.taller.mecanica.model.enums.CategoriaItem;
+import com.taller.mecanica.model.enums.EstadoComponente;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -61,12 +62,37 @@ class InformeCalculoTest {
     void cierreExigeEscaneoFinalYCortesiasCompletadas() {
         DetalleInspeccionInforme pulverizado = detalle(CategoriaItem.CORTESIA, AccionRealizada.PENDIENTE);
         assertThrows(BusinessException.class,
-                () -> InformeCalculo.validarCierre("Sin codigos DTC", List.of(pulverizado)));
+                () -> InformeCalculo.validarCierre("Sin codigos DTC", List.of(pulverizado), null));
         assertThrows(BusinessException.class,
-                () -> InformeCalculo.validarCierre("  ", List.of(detalle(CategoriaItem.CORTESIA, AccionRealizada.COMPLETADO))));
+                () -> InformeCalculo.validarCierre("  ", List.of(detalle(CategoriaItem.CORTESIA, AccionRealizada.COMPLETADO)), null));
 
+        pulverizado.setEstadoComponente(EstadoComponente.OPTIMO);
         pulverizado.setAccionRealizada(AccionRealizada.COMPLETADO);
-        assertDoesNotThrow(() -> InformeCalculo.validarCierre("Sin codigos DTC", List.of(pulverizado)));
+        assertDoesNotThrow(() -> InformeCalculo.validarCierre("Sin codigos DTC", List.of(pulverizado), null));
+    }
+
+    @Test
+    void cierreExigeUnaAccionValidaYLaFichaDeUnPuntoCondicional() {
+        DetalleInspeccionInforme fluido = detalle(CategoriaItem.FLUIDOS, AccionRealizada.COMPLETADO);
+        fluido.setEsCondicional(true);
+        fluido.setRequiereFichaTecnica(true);
+        fluido.setEstadoComponente(EstadoComponente.ATENCION);
+
+        assertThrows(BusinessException.class,
+                () -> InformeCalculo.validarCierre("Escaneo final", List.of(fluido), "ficha.pdf"));
+        fluido.setAccionRealizada(AccionRealizada.RELLENADO);
+        assertThrows(BusinessException.class,
+                () -> InformeCalculo.validarCierre("Escaneo final", List.of(fluido), null));
+        assertDoesNotThrow(() -> InformeCalculo.validarCierre("Escaneo final", List.of(fluido), "ficha.pdf"));
+        fluido.setAccionRealizada(AccionRealizada.NO_REQUERIDO);
+        fluido.setEstadoComponente(null);
+        assertDoesNotThrow(() -> InformeCalculo.validarCierre("Escaneo final", List.of(fluido), null));
+    }
+
+    @Test
+    void proximoServicioRechazaUnKilometrajeQueDesbordaElLimite() {
+        assertThrows(BusinessException.class,
+                () -> InformeCalculo.kilometrajeProximo(Integer.MAX_VALUE, 5_000));
     }
 
     private AdicionalOrden adicional(String descripcion, BigDecimal subtotal, boolean aprobado, boolean cobra) {

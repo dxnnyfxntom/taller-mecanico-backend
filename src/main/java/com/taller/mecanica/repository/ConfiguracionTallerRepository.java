@@ -8,4 +8,7 @@ import java.util.Optional;
 public interface ConfiguracionTallerRepository extends JpaRepository<ConfiguracionTaller, Long> {
 
     Optional<ConfiguracionTaller> findFirstByOrderByIdAsc();
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    Optional<ConfiguracionTaller> findTopByOrderByIdAsc();
 }

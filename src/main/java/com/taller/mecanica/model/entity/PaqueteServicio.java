@@ -51,21 +51,25 @@ public class PaqueteServicio {
     @NotNull(message = "El precio base es obligatorio")
     @DecimalMin(value = "0.0", message = "El precio base no puede ser negativo")
     @Column(name = "precio_base", nullable = false, precision = 10, scale = 2)
+    @jakarta.validation.constraints.Digits(integer = 8, fraction = 2)
     private BigDecimal precioBase;
 
     @NotNull(message = "El tiempo estimado es obligatorio")
     @Min(value = 1, message = "El tiempo estimado debe ser al menos 1 hora")
     @Column(name = "tiempo_estimado_horas", nullable = false)
+    @jakarta.validation.constraints.Max(value = 8760, message = "El tiempo estimado no puede superar 8760 horas")
     private Integer tiempoEstimadoHoras;
 
     @NotNull(message = "La garantia en kilometros es obligatoria")
     @Min(value = 0, message = "La garantia en kilometros no puede ser negativa")
     @Column(name = "garantia_km", nullable = false)
+    @jakarta.validation.constraints.Max(value = 10000000, message = "La garantia no puede superar 10 000 000 km")
     private Integer garantiaKm;
 
     @NotNull(message = "La garantia en meses es obligatoria")
     @Min(value = 0, message = "La garantia en meses no puede ser negativa")
     @Column(name = "garantia_meses", nullable = false)
+    @jakarta.validation.constraints.Max(value = 1200, message = "La garantia no puede superar 1200 meses")
     private Integer garantiaMeses;
 
     @Column(nullable = false)

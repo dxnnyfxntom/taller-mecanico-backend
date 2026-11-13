@@ -170,13 +170,17 @@ public class DemoDataInitializer implements ApplicationRunner {
             detalle.setEsCondicional(item.getEsCondicional());
             detalle.setRequiereFichaTecnica(item.getRequiereFichaTecnica());
             detalle.setOrdenVisualizacion(item.getOrdenVisualizacion());
-            detalle.setEstadoComponente(EstadoComponente.OPTIMO);
-            detalle.setAccionRealizada(orden < 4 ? AccionRealizada.COMPLETADO : AccionRealizada.PENDIENTE);
+            detalle.setEstadoComponente(orden < 4 ? EstadoComponente.OPTIMO : null);
+            AccionRealizada accion = Boolean.TRUE.equals(item.getEsCondicional()) && item.getCategoria() !=
+                    com.taller.mecanica.model.enums.CategoriaItem.CORTESIA
+                    ? AccionRealizada.SOLO_VERIFICADO : AccionRealizada.COMPLETADO;
+            detalle.setAccionRealizada(orden < 4 ? accion : AccionRealizada.PENDIENTE);
             detalle.setObservacionTecnica(orden < 4 ? "Sin novedad." : null);
             informe.getDetalles().add(detalle);
             orden++;
         }
 
+        informe.conservarDatosServicio();
         informeRepository.save(informe);
     }
 }

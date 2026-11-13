@@ -12,15 +12,20 @@ import java.util.Optional;
 
 public interface PagoOrdenRepository extends JpaRepository<PagoOrden, Long> {
 
-    List<PagoOrden> findByInformeIdOrderByFechaPagoAsc(Long informeId);
+    List<PagoOrden> findByInformeIdAndAnuladoEnIsNullOrderByFechaPagoAsc(Long informeId);
+
+    Optional<PagoOrden> findByInformeIdAndClaveOperacion(Long informeId, String claveOperacion);
+
+    @org.springframework.data.jpa.repository.Query("select x.informe.id from PagoOrden x where x.id = :id")
+    Optional<Long> buscarInformeId(@org.springframework.data.repository.query.Param("id") Long id);
 
     Optional<PagoOrden> findByIdAndInformeId(Long id, Long informeId);
 
     boolean existsByInformeId(Long informeId);
 
-    @Query("select sum(p.monto) from PagoOrden p where p.informe.id = :informeId")
+    @Query("select sum(p.monto) from PagoOrden p where p.anuladoEn is null and p.informe.id = :informeId")
     BigDecimal sumMontoByInformeId(@Param("informeId") Long informeId);
 
-    @Query("select sum(p.monto) from PagoOrden p where p.fechaPago >= :desde and p.fechaPago < :hasta")
+    @Query("select sum(p.monto) from PagoOrden p where p.anuladoEn is null and p.fechaPago >= :desde and p.fechaPago < :hasta")
     BigDecimal sumMontoEntreFechas(@Param("desde") LocalDateTime desde, @Param("hasta") LocalDateTime hasta);
 }

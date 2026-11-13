@@ -11,6 +11,7 @@ public record ConvertirCitaRequest(
 
         @NotNull(message = "El kilometraje de ingreso es obligatorio")
         @Min(value = 0, message = "El kilometraje no puede ser negativo")
+        @jakarta.validation.constraints.Max(value = 10000000, message = "El kilometraje no puede superar 10 000 000")
         Integer kilometrajeIngreso,
 
         @NotNull(message = "El nivel de combustible es obligatorio")

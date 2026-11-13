@@ -1,6 +1,8 @@
 package com.taller.mecanica.controller;
 
 import com.taller.mecanica.model.entity.Insumo;
+import com.taller.mecanica.dto.request.AjusteStockRequest;
+import org.springframework.web.bind.annotation.PatchMapping;
 import com.taller.mecanica.model.enums.CategoriaInsumo;
 import com.taller.mecanica.service.InsumoService;
 import jakarta.validation.Valid;
@@ -54,6 +56,11 @@ public class InsumoController {
     @PutMapping("/{id}")
     public Insumo actualizar(@PathVariable Long id, @Valid @RequestBody Insumo datos) {
         return insumoService.actualizar(id, datos);
+    }
+
+    @PatchMapping("/{id}/stock")
+    public Insumo ajustarStock(@PathVariable Long id, @Valid @RequestBody AjusteStockRequest request) {
+        return insumoService.ajustarStock(id, request);
     }
 
     @PostMapping(value = "/{id}/ficha-tecnica", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

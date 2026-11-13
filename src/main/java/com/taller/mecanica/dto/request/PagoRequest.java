@@ -9,11 +9,16 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import java.util.UUID;
+
 public record PagoRequest(
+        @NotNull(message = "La clave de operacion es obligatoria") UUID claveOperacion,
+
         LocalDateTime fechaPago,
 
         @NotNull(message = "El monto es obligatorio")
         @DecimalMin(value = "0.01", message = "El monto debe ser mayor a cero")
+        @jakarta.validation.constraints.Digits(integer = 8, fraction = 2, message = "Ingrese un monto con hasta dos decimales")
         BigDecimal monto,
 
         @NotNull(message = "El tipo de pago es obligatorio")

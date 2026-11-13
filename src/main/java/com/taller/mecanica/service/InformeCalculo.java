@@ -11,9 +11,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 public final class InformeCalculo {
+
+    private static final Set<AccionRealizada> ACCIONES_CONDICIONALES = Set.of(
+            AccionRealizada.SOLO_VERIFICADO, AccionRealizada.RELLENADO,
+            AccionRealizada.CAMBIADO, AccionRealizada.CALIBRADO, AccionRealizada.NO_REQUERIDO);
 
     private InformeCalculo() {
     }
@@ -23,7 +27,11 @@ public final class InformeCalculo {
     }
 
     public static int kilometrajeProximo(int kilometrajeIngreso, int garantiaKm) {
-        return kilometrajeIngreso + garantiaKm;
+        long proximo = (long) kilometrajeIngreso + garantiaKm;
+        if (proximo > Integer.MAX_VALUE) {
+            throw new BusinessException("El kilometraje mas la garantia supera el limite admitido");
+        }
+        return (int) proximo;
     }
 
     public static LocalDateTime fechaProximo(LocalDateTime ingreso, int meses) {
@@ -73,22 +81,37 @@ public final class InformeCalculo {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
-    public static void validarCierre(String escaneoFinalResultado, List<DetalleInspeccionInforme> detalles) {
+    public static boolean accionPermitida(DetalleInspeccionInforme detalle, AccionRealizada accion) {
+        if (accion == null) {
+            return false;
+        }
+        if (detalle.getCategoria() == CategoriaItem.CORTESIA || !Boolean.TRUE.equals(detalle.getEsCondicional())) {
+            return accion == AccionRealizada.COMPLETADO;
+        }
+        return ACCIONES_CONDICIONALES.contains(accion);
+    }
+
+    public static void validarCierre(String escaneoFinalResultado, List<DetalleInspeccionInforme> detalles,
+                                     String fichaTecnicaUrl) {
         if (escaneoFinalResultado == null || escaneoFinalResultado.isBlank()) {
-            throw new BusinessException(
-                    "No se puede cerrar la orden sin registrar el escaneo final (escaneoFinalResultado)");
+            throw new BusinessException("Registre el escaneo final antes de cerrar la orden");
         }
-        if (detalles == null) {
-            throw new BusinessException("La orden no tiene el checklist de 19 puntos");
+        if (detalles == null || detalles.isEmpty()) {
+            throw new BusinessException("La orden no tiene un checklist configurado");
         }
-        List<String> cortesiasPendientes = detalles.stream()
-                .filter(d -> d.getCategoria() == CategoriaItem.CORTESIA)
-                .filter(d -> d.getAccionRealizada() != AccionRealizada.COMPLETADO)
+        List<String> pendientes = detalles.stream()
+                .filter(d -> !accionPermitida(d, d.getAccionRealizada())
+                        || (d.getAccionRealizada() != AccionRealizada.NO_REQUERIDO && d.getEstadoComponente() == null))
                 .map(DetalleInspeccionInforme::getDescripcionTarea)
-                .collect(Collectors.toList());
-        if (!cortesiasPendientes.isEmpty()) {
-            throw new BusinessException("No se puede cerrar la orden. Items de CORTESIA sin COMPLETADO: "
-                    + String.join(" | ", cortesiasPendientes));
+                .toList();
+        if (!pendientes.isEmpty()) {
+            throw new BusinessException("Registre un resultado para estos puntos del checklist: "
+                    + String.join(" | ", pendientes));
+        }
+        boolean requiereFicha = detalles.stream().anyMatch(d -> Boolean.TRUE.equals(d.getRequiereFichaTecnica())
+                && d.getAccionRealizada() != AccionRealizada.NO_REQUERIDO);
+        if (requiereFicha && (fichaTecnicaUrl == null || fichaTecnicaUrl.isBlank())) {
+            throw new BusinessException("Adjunte la ficha tecnica requerida antes de cerrar la orden");
         }
     }
 

@@ -23,8 +23,13 @@ public class ConfiguracionService {
     }
 
     @Transactional
+    public ConfiguracionTaller bloquear() {
+        return configuracionRepository.findTopByOrderByIdAsc().orElseGet(this::crearPorDefecto);
+    }
+
+    @Transactional
     public ConfiguracionTaller actualizar(ConfiguracionTaller datos) {
-        ConfiguracionTaller configuracion = obtener();
+        ConfiguracionTaller configuracion = bloquear();
         configuracion.setNombreTaller(datos.getNombreTaller());
         configuracion.setRuc(datos.getRuc());
         configuracion.setDireccion(datos.getDireccion());

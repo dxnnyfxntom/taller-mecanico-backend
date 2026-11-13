@@ -80,6 +80,7 @@ public class Vehiculo {
 
     @Min(value = 0, message = "El kilometraje actual no puede ser negativo")
     @Column(name = "kilometraje_actual", nullable = false)
+    @jakarta.validation.constraints.Max(value = 10000000, message = "El kilometraje no puede superar 10 000 000")
     private Integer kilometrajeActual = 0;
 
     @PrePersist

@@ -3,6 +3,7 @@ package com.taller.mecanica.service;
 import com.taller.mecanica.exception.BusinessException;
 import com.taller.mecanica.exception.ResourceNotFoundException;
 import com.taller.mecanica.model.entity.Cliente;
+import com.taller.mecanica.model.entity.InformeVehiculo;
 import com.taller.mecanica.model.entity.Vehiculo;
 import com.taller.mecanica.model.enums.EstadoCita;
 import com.taller.mecanica.repository.CitaRepository;
@@ -75,6 +76,8 @@ public class VehiculoService {
         if (vehiculoRepository.existsByPlacaIgnoreCaseAndIdNot(datos.getPlaca(), id)) {
             throw new BusinessException("Ya existe otro vehiculo con la placa " + datos.getPlaca());
         }
+        informeRepository.findByVehiculoIdAndDatosServicioIsNull(id)
+                .forEach(InformeVehiculo::conservarDatosServicio);
         if (datos.getCliente() != null && datos.getCliente().getId() != null) {
             Cliente cliente = clienteRepository.findById(datos.getCliente().getId())
                     .orElseThrow(() -> ResourceNotFoundException.de("Cliente", datos.getCliente().getId()));

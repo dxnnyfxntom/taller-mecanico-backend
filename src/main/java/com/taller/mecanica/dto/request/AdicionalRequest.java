@@ -23,6 +23,7 @@ public record AdicionalRequest(
 
         @NotNull(message = "El precio unitario es obligatorio")
         @DecimalMin(value = "0.0", message = "El precio unitario no puede ser negativo")
+        @jakarta.validation.constraints.Digits(integer = 8, fraction = 2)
         BigDecimal precioUnitario,
 
         Boolean aprobadoPorCliente,

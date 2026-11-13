@@ -7,6 +7,7 @@ import com.taller.mecanica.security.RestAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -43,7 +44,8 @@ public class SecurityConfig {
             HttpSecurity http,
             JwtAuthenticationConverter jwtAuthenticationConverter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
-            RestAccessDeniedHandler accessDeniedHandler) throws Exception {
+            RestAccessDeniedHandler accessDeniedHandler,
+            com.taller.mecanica.security.AccesoOrden accesoOrden) throws Exception {
 
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -59,7 +61,6 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
-                                "/uploads/**",
                                 "/",
                                 "/index.html",
                                 "/favicon.ico",
@@ -70,7 +71,29 @@ public class SecurityConfig {
                                 "/*.png",
                                 "/*.webmanifest"
                         ).permitAll()
-                        .requestMatchers("/api/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/uploads/**").access((autenticacion, contexto) ->
+                                new org.springframework.security.authorization.AuthorizationDecision(
+                                        accesoOrden.archivo(autenticacion.get(), contexto.getRequest())))
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me")
+                                .hasAnyRole("ADMIN", "RECEPCION", "MECANICO")
+                        .requestMatchers("/api/informes/*/pagos", "/api/pagos/**", "/api/adicionales/**",
+                                "/api/informes/*/adicionales", "/api/reportes/**")
+                                .hasAnyRole("ADMIN", "RECEPCION")
+                        .requestMatchers("/api/configuracion/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/informes", "/api/informes/*", "/api/informes/*/checklist",
+                                "/api/informes/*/evidencias", "/api/insumos/**")
+                                .hasAnyRole("ADMIN", "RECEPCION", "MECANICO")
+                        .requestMatchers(HttpMethod.PATCH, "/api/informes/*/checklist/*", "/api/informes/*/escaneos")
+                                .hasAnyRole("ADMIN", "RECEPCION", "MECANICO")
+                        .requestMatchers("/api/informes/*/consumos", "/api/consumos/**",
+                                "/api/informes/*/evidencias", "/api/evidencias/**", "/api/informes/*/ficha-tecnica")
+                                .hasAnyRole("ADMIN", "RECEPCION", "MECANICO")
+                        .requestMatchers(HttpMethod.GET, "/api/mecanicos/**", "/api/paquetes/**")
+                                .hasAnyRole("ADMIN", "RECEPCION", "MECANICO")
+                        .requestMatchers("/api/insumos/**", "/api/mecanicos/**", "/api/paquetes/**")
+                                .hasRole("ADMIN")
+                        .requestMatchers("/api/**").hasAnyRole("ADMIN", "RECEPCION")
+                        .requestMatchers("/uploads/**").denyAll()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
@@ -92,7 +115,7 @@ public class SecurityConfig {
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
         authoritiesConverter.setAuthoritiesClaimName("roles");
-        authoritiesConverter.setAuthorityPrefix("");
+        authoritiesConverter.setAuthorityPrefix("ROLE_");
 
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);

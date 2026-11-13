@@ -1,0 +1,1 @@
+function s(e,t){let r=e.error?.campos;if(r&&typeof r==`object`){let o=Object.values(r).filter(n=>typeof n==`string`);if(o.length)return o.join(`. `)}return e.error?.mensaje??t}export{s as t};

@@ -50,7 +50,7 @@ public class Insumo {
     @NotNull(message = "El stock actual es obligatorio")
     @Min(value = 0, message = "El stock actual no puede ser negativo")
     @Column(name = "stock_actual", nullable = false)
-    private Integer stockActual;
+    private Integer stockActual = 0;
 
     @NotNull(message = "El stock minimo es obligatorio")
     @Min(value = 0, message = "El stock minimo no puede ser negativo")
@@ -60,6 +60,7 @@ public class Insumo {
     @NotNull(message = "El precio de venta es obligatorio")
     @DecimalMin(value = "0.0", message = "El precio de venta no puede ser negativo")
     @Column(name = "precio_venta", nullable = false, precision = 10, scale = 2)
+    @jakarta.validation.constraints.Digits(integer = 8, fraction = 2)
     private BigDecimal precioVenta;
 
     @Size(max = 500, message = "La URL de la ficha tecnica no debe superar 500 caracteres")

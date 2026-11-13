@@ -8,6 +8,7 @@ public record InformeUpdateRequest(
         Long mecanicoId,
 
         @Min(value = 0, message = "El kilometraje no puede ser negativo")
+        @jakarta.validation.constraints.Max(value = 10000000, message = "El kilometraje no puede superar 10 000 000")
         Integer kilometrajeIngreso,
 
         NivelCombustible nivelCombustible,

@@ -1,6 +1,7 @@
 package com.taller.mecanica.exception;
 
 import com.taller.mecanica.dto.common.ErrorResponse;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -87,10 +88,37 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> jsonInvalido(HttpMessageNotReadableException ex, HttpServletRequest request) {
-        return ResponseEntity.badRequest()
-                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST,
-                        "JSON invalido o valor no permitido en un campo (revise enums, fechas y numeros)",
-                        request.getRequestURI()));
+        Map<String, String> campos = new LinkedHashMap<>();
+        if (ex.getCause() instanceof JsonMappingException error) {
+            String campo = error.getPath().stream()
+                    .map(JsonMappingException.Reference::getFieldName)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining("."));
+            if (!campo.isBlank()) {
+                campos.put(campo, "Revise el formato o valor de " + campo);
+            }
+        }
+        return ResponseEntity.badRequest().body(ErrorResponse.of(HttpStatus.BAD_REQUEST,
+                "JSON invalido o valor no permitido (revise fechas, numeros y opciones)", request.getRequestURI(), campos));
+    }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> parametroInvalido(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(ErrorResponse.of(HttpStatus.BAD_REQUEST,
+                "Revise el valor del parametro " + ex.getName(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> archivoNoEncontrado(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of(HttpStatus.NOT_FOUND, "Archivo o ruta no encontrado", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> accesoDenegado(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of(HttpStatus.FORBIDDEN, "No tiene permiso para esta operacion", request.getRequestURI()));
     }
 
     @ExceptionHandler(Exception.class)

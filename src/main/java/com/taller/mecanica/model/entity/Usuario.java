@@ -51,6 +51,9 @@ public class Usuario {
     @Column(nullable = false, length = 20)
     private Rol rol = Rol.ADMIN;
 
+    @Column(name = "mecanico_id")
+    private Long mecanicoId;
+
     @Column(nullable = false)
     private Boolean activo = true;
 

@@ -114,7 +114,15 @@ El usuario inicial se crea automaticamente solo si la tabla `usuarios` esta vaci
 3. Enviar `Authorization: Bearer <token>` en el resto de endpoints.
 4. `GET /api/auth/me` devuelve el usuario autenticado.
 
-Rutas publicas: `/api/auth/login`, `/api/health`, `/v3/api-docs/**`, `/swagger-ui/**`, `/uploads/**` y los archivos estaticos del frontend. Todo `/api/**` exige JWT.
+Las rutas públicas incluyen `/api/auth/login`, `/api/health`, Swagger y los recursos estáticos del frontend. Los archivos operativos en `/uploads/**` requieren JWT.
+
+- ADMIN administra toda la aplicación y los catálogos.
+- RECEPCION gestiona clientes, vehículos, citas, órdenes y cobros, y consulta los catálogos.
+- MECANICO consulta y actualiza el trabajo técnico de las órdenes que tiene asignadas. Para habilitar una cuenta de este rol, vincula `usuarios.mecanico_id` al registro correspondiente de `mecanicos`. La demo crea una cuenta ADMIN.
+
+Los POST de pagos y consumos requieren un UUID en el campo `claveOperacion`. Un reintento usa la misma clave y los mismos datos. Cada operación nueva usa su propia clave. El stock inicial se establece al crear el insumo. Los ajustes posteriores se registran en `PATCH /api/insumos/{id}/stock` con `stockEsperado`, `stockNuevo` y `motivo`.
+
+Para entregar se requiere resolver los puntos de la plantilla, registrar el escaneo final y adjuntar la ficha técnica cuando corresponda. Una orden entregada con deuda admite pagos hasta liquidar el saldo.
 
 ## Endpoints principales
 
@@ -161,7 +169,7 @@ Rutas publicas: `/api/auth/login`, `/api/health`, `/v3/api-docs/**`, `/swagger-u
 
 ## Frontend compilado
 
-El backend incluye en `src/main/resources/static` el build de Angular para el modo demo. Si cambia el frontend, regenere esos archivos:
+El backend incluye en `src/main/resources/static` el build de Angular para el modo demo. `preparar-demo.cmd` lo recompila automáticamente cuando encuentra el repositorio hermano. Para regenerarlo manualmente:
 
 ```bat
 REM En el repositorio taller-mecanico-frontend

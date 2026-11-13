@@ -4,6 +4,7 @@ import com.taller.mecanica.model.enums.EtapaEvidencia;
 import com.taller.mecanica.dto.response.InformeDetalleResponse;
 import com.taller.mecanica.service.EvidenciaService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,12 +28,14 @@ public class EvidenciaController {
     private final EvidenciaService evidenciaService;
 
     @GetMapping("/informes/{informeId}/evidencias")
+    @PreAuthorize("@accesoOrden.orden(authentication, #informeId)")
     public List<InformeDetalleResponse.Evidencia> listar(@PathVariable Long informeId) {
         return evidenciaService.listar(informeId);
     }
 
     @PostMapping(value = "/informes/{informeId}/evidencias", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@accesoOrden.orden(authentication, #informeId)")
     public InformeDetalleResponse.Evidencia subir(@PathVariable Long informeId,
                                                   @RequestPart("archivo") MultipartFile archivo,
                                                   @RequestParam(required = false) String descripcion,
@@ -42,6 +45,7 @@ public class EvidenciaController {
 
     @DeleteMapping("/evidencias/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@accesoOrden.evidencia(authentication, #id)")
     public void eliminar(@PathVariable Long id) {
         evidenciaService.eliminar(id);
     }

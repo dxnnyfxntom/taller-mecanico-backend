@@ -1,6 +1,8 @@
 package com.taller.mecanica.service;
 
 import com.taller.mecanica.exception.ResourceNotFoundException;
+import com.taller.mecanica.exception.BusinessException;
+import org.springframework.transaction.annotation.Isolation;
 import com.taller.mecanica.model.entity.EvidenciaFotografica;
 import com.taller.mecanica.model.entity.InformeVehiculo;
 import com.taller.mecanica.model.enums.EtapaEvidencia;
@@ -36,8 +38,11 @@ public class EvidenciaService {
     @Transactional
     public InformeDetalleResponse.Evidencia subir(Long informeId, MultipartFile archivo,
                                                   String descripcion, EtapaEvidencia etapa) {
-        InformeVehiculo informe = cargarInforme(informeId);
+        InformeVehiculo informe = informeRepository.bloquear(informeId);
         InformeService.validarEditable(informe);
+        if (descripcion != null && descripcion.length() > 300) {
+            throw new BusinessException("La descripcion de la evidencia no debe superar 300 caracteres");
+        }
         String url = fileStorageService.guardarEvidencia(informeId, archivo);
 
         EvidenciaFotografica evidencia = new EvidenciaFotografica();
@@ -49,12 +54,14 @@ public class EvidenciaService {
         return InformeMapper.toEvidencia(evidenciaRepository.save(evidencia));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void eliminar(Long id) {
+        Long informeId = evidenciaRepository.buscarInformeId(id)
+                .orElseThrow(() -> ResourceNotFoundException.de("Evidencia fotografica", id));
+        InformeService.validarEditable(informeRepository.bloquear(informeId));
         EvidenciaFotografica evidencia = evidenciaRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.de("Evidencia fotografica", id));
-        InformeService.validarEditable(evidencia.getInforme());
-        fileStorageService.eliminar(evidencia.getUrlImagen());
+        fileStorageService.eliminarDespuesDeConfirmar(evidencia.getUrlImagen());
         evidenciaRepository.delete(evidencia);
     }
 

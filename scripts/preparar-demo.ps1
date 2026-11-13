@@ -12,7 +12,18 @@ if (-not $Destino) {
     $Destino = Join-Path ([Environment]::GetFolderPath("Desktop")) "Taller-Mecanico-Demo"
 }
 
-# 1) Compilar el jar (incluye el frontend Angular ya copiado en src/main/resources/static)
+# 1) Actualizar el frontend local antes de compilar el jar.
+$frontend = Join-Path (Split-Path -Parent $raiz) "taller-mecanico-frontend"
+if (Test-Path -LiteralPath (Join-Path $frontend "angular.json")) {
+    Push-Location $frontend
+    try {
+        & npm.cmd run build
+        if ($LASTEXITCODE -ne 0) { throw "Fallo la compilacion de Angular." }
+    } finally {
+        Pop-Location
+    }
+    & (Join-Path $PSScriptRoot "copiar-frontend.ps1")
+}
 $mvn = $env:MAVEN_PATH
 if (-not $mvn) {
     $enPath = Get-Command mvn.cmd -ErrorAction SilentlyContinue
@@ -27,7 +38,7 @@ if (-not $mvn) {
 }
 
 Write-Host "Compilando backend (perfil demo)..." -ForegroundColor Cyan
-& $mvn -q -DskipTests clean package
+& $mvn -f (Join-Path $raiz "pom.xml") -q -DskipTests clean package
 if ($LASTEXITCODE -ne 0) { throw "Fallo la compilacion del backend." }
 
 $jarOrigen = Join-Path $raiz "target\mecanica-backend-1.0.0.jar"
